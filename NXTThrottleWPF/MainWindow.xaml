@@ -1,0 +1,16 @@
+﻿<Window x:Class="NXTThrottleWPF.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:NXTThrottleWPF"
+        mc:Ignorable="d"
+        Title="NXT Throttle Control" Height="450" Width="800">
+    <Grid>
+        <Button Name="ConnectButton" Click="ConnectButton_Click" Margin="10,10,551,363">Connect to Sim</Button>
+        <TextBlock Name="CalibrateButtonLabel" Margin="10,89,547,304" Text="Press button below to start NXT calibration"/>
+        <Button Name="CalibrationButton" Click="SetupButton_Clicked" Margin="10,115,547,254">Calibrate NXT</Button>
+        <Button Name="SendThrottleButton" Click="SendThrottle_Clicked" Margin="542,10,10,363">Send a Throttle Packet</Button>
+        <TextBlock Name="OutputTextBlock" Margin="542,61,10,158"></TextBlock>
+    </Grid>
+</Window>
