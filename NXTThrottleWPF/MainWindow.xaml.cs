@@ -1,10 +1,27 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Text;
 using System.Windows;
 
 using Microsoft.FlightSimulator.SimConnect;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Windows.Interop;
 
 namespace NXTThrottleWPF {
+    public enum DEFINITIONS {
+        PlaneThrottle
+    };
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct StructPlaneThrottle { //only using eng1 for now for ease.
+        public double ENG1;
+        public double ENG2;
+    };
+
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
@@ -14,39 +31,74 @@ namespace NXTThrottleWPF {
         bool connectedToSim = false;
 
         /// Window handle
-        private IntPtr m_hWnd = new IntPtr(0);
+        IntPtr handle;
+        HwndSource handleSource;
+
+        const int WM_USER_SIMCONNECT = 0x0402;
 
         /// <summary>
-        /// Constructor and starting for the 
+        /// Constructor and starting for the window
         /// </summary>
         public MainWindow() {
             InitializeComponent();
 
-            //NXTControl nxtController = new NXTControl();
-            //nxtController.ConnectAndInitialize();
-            //nxtController.ContinuouslyPoll();
+            handle = new WindowInteropHelper(this).EnsureHandle(); // Get handle of main WPF Window
+            handleSource = HwndSource.FromHwnd(handle); // Get source of handle in order to add event handlers to it
+            handleSource.AddHook(HandleSimConnectEvents);
+
+            Thread pollThread = new Thread(PollThread);
         }
 
-        //this needs to be refactored
-        public void SetWindowHandle(IntPtr _hWnd) {
-            m_hWnd = _hWnd;
+        ~MainWindow() {
+            if (handleSource != null) {
+                handleSource.RemoveHook(HandleSimConnectEvents);
+            }
+        }
+
+        private IntPtr HandleSimConnectEvents(IntPtr hWnd, int message, IntPtr wParam, IntPtr lParam, ref bool isHandled) {
+            isHandled = false;
+
+            switch (message) {
+                case WM_USER_SIMCONNECT: {
+                        if (simConnect != null) {
+                            simConnect.ReceiveMessage();
+                            isHandled = true;
+                        }
+                    }
+                    break;
+
+                default:
+                    break;
+            }
+
+            return IntPtr.Zero;
         }
 
         private void ConnectButton_Click(object sender, RoutedEventArgs e) {
             if (!connectedToSim) {
 
-                const int WM_USER_SIMCONNECT = 0x0402;
-
                 try { 
-                    simConnect = new SimConnect("Managed Data Request", m_hWnd, WM_USER_SIMCONNECT, null, 0);
+                    simConnect = new SimConnect("Managed Data Request", handle, WM_USER_SIMCONNECT, null, 0);
                 } catch (COMException ex) {
                     ConnectButton.Content = "Error connecting";
                     Console.WriteLine("ERROR CONNECTING TO SIMCONNECT: " + ex.ToString());
                 }
 
                 if (simConnect != null) {
-                    ConnectButton.Content = "Connected";
-                    connectedToSim = true;
+                    /// Listen to connect and quit msgs
+                    simConnect.OnRecvOpen += new SimConnect.RecvOpenEventHandler(SimConnect_OnRecvOpen);
+                    simConnect.OnRecvQuit += new SimConnect.RecvQuitEventHandler(SimConnect_OnRecvQuit);
+
+                    /// Listen to exceptions
+                    simConnect.OnRecvException += new SimConnect.RecvExceptionEventHandler(SimConnect_OnRecvException);
+
+                    /// Catch a simobject data request
+                    //simConnect.OnRecvSimobjectDataBytype += new SimConnect.RecvSimobjectDataBytypeEventHandler(SimConnect_OnRecvSimobjectDataBytype);
+
+                    //set up the data definitions and things
+                    simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:1", "percent", SIMCONNECT_DATATYPE.FLOAT32, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:2", "percent", SIMCONNECT_DATATYPE.FLOAT32, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.RegisterDataDefineStruct<StructPlaneThrottle>(DEFINITIONS.PlaneThrottle);
                 }
                 
             } else {
@@ -54,9 +106,38 @@ namespace NXTThrottleWPF {
                     simConnect.Dispose();
                     simConnect = null;
                 }
-                ConnectButton.Content = "Disconnected";
-                connectedToSim = false;
             }
+        }
+
+        private void SimConnect_OnRecvSimobjectDataBytype(SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data) {
+            throw new NotImplementedException();
+        }
+
+        private void SimConnect_OnRecvException(SimConnect sender, SIMCONNECT_RECV_EXCEPTION data) {
+            SIMCONNECT_EXCEPTION eException = (SIMCONNECT_EXCEPTION)data.dwException;
+            Console.WriteLine("SimConnect_OnRecvException: " + eException.ToString());
+
+            OutputTextBlock.Text += "SimConnect_OnRecvException: " + eException.ToString();
+        }
+
+        private void SimConnect_OnRecvQuit(SimConnect sender, SIMCONNECT_RECV data) {
+            Console.WriteLine("SimConnect_OnRecvQuit");
+            Console.WriteLine("Disconnected to KH");
+
+            ConnectButton.Content = "Connect";
+            connectedToSim = false;
+        }
+
+        private void SimConnect_OnRecvOpen(SimConnect sender, SIMCONNECT_RECV_OPEN data) {
+            Console.WriteLine("SimConnect_OnRecvOpen");
+            Console.WriteLine("Connected to KH");
+
+            ConnectButton.Content = "Disconnect";
+            connectedToSim = true;
+        }
+
+        private void PollThread() {
+
         }
     }
 }

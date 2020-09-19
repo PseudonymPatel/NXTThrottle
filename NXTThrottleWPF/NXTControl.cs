@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.FlightSimulator.SimConnect;
+using System;
 using System.Collections.Generic;
 using System.IO.Ports;
 using System.Linq;
@@ -50,7 +51,12 @@ namespace NXTThrottleWPF {
         private void SendThrottle_Clicked(object sender, RoutedEventArgs e) {
             int throttleAmount = NXTcontroller.getThrottlePercent();
             if (throttleAmount != -1) {
-                OutputTextBlock.Text = "Throttle is at: " + throttleAmount / 100;
+                OutputTextBlock.Text = "Throttle is at: " + (Double) throttleAmount / 100;
+                StructPlaneThrottle planeThrottle = new StructPlaneThrottle() {
+                    ENG1 = ((double)throttleAmount) / 100,
+                    ENG2 = ((double)throttleAmount) / 100
+                };
+                simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 0, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
             } else {
                 OutputTextBlock.Text = "Error getting motor position.";
             }
