@@ -36,6 +36,9 @@ namespace NXTThrottleWPF {
 
         const int WM_USER_SIMCONNECT = 0x0402;
 
+        //thread that gets and sends throttle continuously
+        Thread pollThread;
+
         /// <summary>
         /// Constructor and starting for the window
         /// </summary>
@@ -46,7 +49,7 @@ namespace NXTThrottleWPF {
             handleSource = HwndSource.FromHwnd(handle); // Get source of handle in order to add event handlers to it
             handleSource.AddHook(HandleSimConnectEvents);
 
-            Thread pollThread = new Thread(PollThread);
+            pollThread = new Thread(PollThread);
         }
 
         ~MainWindow() {
@@ -96,8 +99,8 @@ namespace NXTThrottleWPF {
                     //simConnect.OnRecvSimobjectDataBytype += new SimConnect.RecvSimobjectDataBytypeEventHandler(SimConnect_OnRecvSimobjectDataBytype);
 
                     //set up the data definitions and things
-                    simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:1", "percent", SIMCONNECT_DATATYPE.FLOAT32, 0.0f, SimConnect.SIMCONNECT_UNUSED);
-                    simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:2", "percent", SIMCONNECT_DATATYPE.FLOAT32, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:1", "percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:2", "percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     simConnect.RegisterDataDefineStruct<StructPlaneThrottle>(DEFINITIONS.PlaneThrottle);
                 }
                 
@@ -136,8 +139,34 @@ namespace NXTThrottleWPF {
             connectedToSim = true;
         }
 
-        private void PollThread() {
+        private void SendThrottle_Clicked(object sender, RoutedEventArgs e) {
+            if (!pollThread.IsAlive) {
+                pollThread.Start();
+                Console.WriteLine("Polling started");
+            } else {
+                Console.WriteLine("polling ended.");
+                pollThread.Abort();
+            }
+        }
 
+        private void PollThread() {
+            while (true) {
+                double throttleAmount = NXTcontroller.getThrottlePercent();
+                if (throttleAmount != -1) {
+                    //OutputTextBlock.Text = "Throttle is at: " + (Double)throttleAmount;
+                    StructPlaneThrottle planeThrottle = new StructPlaneThrottle() {
+                        ENG1 = throttleAmount,
+                        ENG2 = throttleAmount
+                    };
+                    if (connectedToSim) {
+                        simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 1, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
+                    }
+                } else {
+                    //OutputTextBlock.Text = "Error getting motor position.";
+                }
+                Thread.Sleep(100);
+            }
+            Console.WriteLine("Thread ended");
         }
     }
 }

@@ -47,20 +47,6 @@ namespace NXTThrottleWPF {
                     break;
             }
         }
-
-        private void SendThrottle_Clicked(object sender, RoutedEventArgs e) {
-            int throttleAmount = NXTcontroller.getThrottlePercent();
-            if (throttleAmount != -1) {
-                OutputTextBlock.Text = "Throttle is at: " + (Double) throttleAmount / 100;
-                StructPlaneThrottle planeThrottle = new StructPlaneThrottle() {
-                    ENG1 = ((double)throttleAmount) / 100,
-                    ENG2 = ((double)throttleAmount) / 100
-                };
-                simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 0, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
-            } else {
-                OutputTextBlock.Text = "Error getting motor position.";
-            }
-        }
     }
 
     class NXTControl {
@@ -69,7 +55,8 @@ namespace NXTThrottleWPF {
         public static readonly byte[] motorPositionPacket = { 0x00, 0x06, 0x00 };
 
         static readonly int MAX_ROTATION_LEEWAY = 3; //degrees of "leeway" to give to the motor. can be X degrees less than max to show as max. Accounts for minor inconsistencies in max position.
-        static int maxRotation;
+        static int maxRotation = 100;
+        private int directionOfRotation = 1; //either 1 or -1, depending on which way the motor rotates (if throttle forwards = motor backwards, then -1)
 
         //The following are the bytes that can be sent to the nxt
         //reference sheet: http://kio4.com/b4a/programas/Appendix%202-LEGO%20MINDSTORMS%20NXT%20Direct%20commands.pdf
@@ -142,6 +129,12 @@ namespace NXTThrottleWPF {
                     //Console.WriteLine(BitConverter.ToString(packet));
                     int motorPosition = BitConverter.ToInt32(packet, 23);
                     Console.WriteLine("MAX MOTOR POSITION: " + motorPosition);
+
+                    if (motorPosition < 0) {
+                        motorPosition = Math.Abs(motorPosition);
+                        directionOfRotation = -1;
+                    }
+
                     maxRotation = motorPosition - MAX_ROTATION_LEEWAY;
                     if (maxRotation < 1) { //avoids problems with dividing by zero or negatives.
                         maxRotation = 1;
@@ -153,33 +146,33 @@ namespace NXTThrottleWPF {
             //keyboardThread.Start();
         }
 
-        public int getThrottlePercent() {
+        public double getThrottlePercent() {
             if (SendPacket(motorPositionPacket)) {
                 byte[] packet = ReadPacket();
                 if (packet != null && packet.Length > 0) {
                     //Console.WriteLine(BitConverter.ToString(packet));
-                    int motorPosition = BitConverter.ToInt32(packet, 23);
-                    Console.WriteLine("MOTOR POSITION: " + motorPosition + " Percent: " + Math.Min(100, Math.Abs((Double)(motorPosition / maxRotation))));
-                    return Math.Min(100, motorPosition / maxRotation);
+                    int motorPosition = BitConverter.ToInt32(packet, 23) * directionOfRotation; //mult by directionOfRotation to make the correct sign.
+                    //return Math.Max(Math.Min(100, motorPosition / maxRotation), 0);  //Constrains to be between 0 and 100
+                    return Math.Min(100, Math.Abs((double)motorPosition / maxRotation * 100));
                 }
             }
             return -1;
         }
 
-        public void ContinuouslyPoll() {
-            //continuous get motor position packets.
-            while (_continue) {
-                if (SendPacket(motorPositionPacket)) {
-                    byte[] packet = ReadPacket();
-                    if (packet != null && packet.Length > 0) {
-                        //Console.WriteLine(BitConverter.ToString(packet));
-                        int motorPosition = BitConverter.ToInt32(packet, 23);
-                        Console.WriteLine("MOTOR POSITION: " + motorPosition + " Percent: " + Math.Min(100, Math.Abs((Double)(motorPosition / maxRotation))));
-                    }
-                }
-                Thread.Sleep(100);
-            }
-        }
+        //public void ContinuouslyPoll() {
+        //    //continuous get motor position packets.
+        //    while (_continue) {
+        //        if (SendPacket(motorPositionPacket)) {
+        //            byte[] packet = ReadPacket();
+        //            if (packet != null && packet.Length > 0) {
+        //                //Console.WriteLine(BitConverter.ToString(packet));
+        //                int motorPosition = BitConverter.ToInt32(packet, 23);
+        //                Console.WriteLine("MOTOR POSITION: " + motorPosition + " Percent: " + Math.Min(100, Math.Abs((Double)(motorPosition / maxRotation))));
+        //            }
+        //        }
+        //        Thread.Sleep(100);
+        //    }
+        //}
 
         public static byte[] ReadPacket() {
             try {
@@ -237,15 +230,6 @@ namespace NXTThrottleWPF {
                 return false;
             }
             return true;
-        }
-
-        public static void KeyboardListener() {
-            while (_continue) {
-                string command = Console.ReadLine();
-                if (command == "exit") {
-                    _continue = false;
-                }
-            }
         }
     }
 }
