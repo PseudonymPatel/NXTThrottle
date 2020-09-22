@@ -1,11 +1,6 @@
-﻿using Microsoft.FlightSimulator.SimConnect;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.IO.Ports;
 using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Windows;
 
 namespace NXTThrottleWPF {
@@ -14,7 +9,10 @@ namespace NXTThrottleWPF {
     /// </summary>
     public partial class MainWindow {
         //this int will keep track of the setup progress, don't really want to use an enum. 
-        private int setupProgress = 0; //0 = nothing, 1 = back calibration ready, 2 = forwards calibration ready, 3 = all ready to use.
+
+        //0 = nothing, 1 = back calibration ready, 2 = forwards calibration ready, 3 = all ready to use.
+        private int setupProgress = 0;
+
         NXTControl NXTcontroller = new NXTControl();
 
         private void SetupButton_Clicked(object sender, RoutedEventArgs e) {
@@ -22,11 +20,16 @@ namespace NXTThrottleWPF {
                 case 0: //connect to the NXT and prep for back calibration
                 case 3: //also peform this step to recalibrate
                     //first connect over bluetooth
-                    NXTcontroller.Connect();
+                    bool connectSuccess = NXTcontroller.Connect();
+                    //TODO: recalibration once already connected does not work.
 
-                    CalibrateButtonLabel.Text = "Move fully backwards and hit button again.";
+                    if (connectSuccess) {
+                        CalibrateButtonLabel.Text = "Move fully backwards and hit button again.";
+                        setupProgress = 1;
+                    } else {
+                        OutputTextBlock.Text = "Error connecting to NXT, retry.";
+                    }
 
-                    setupProgress = 1;
                     break;
                 case 1: //do back calibration
                     NXTcontroller.InitializeBackwards();
@@ -43,7 +46,7 @@ namespace NXTThrottleWPF {
                     setupProgress++;
                     break;
                 default:
-                    CalibrateButtonLabel.Text = "How'd you see this?";
+                    CalibrateButtonLabel.Text = "Pester the developer. You aren't supposed to see this.";
                     break;
             }
         }
@@ -51,7 +54,6 @@ namespace NXTThrottleWPF {
 
     class NXTControl {
         static SerialPort _serialPort;
-        static bool _continue = false;
         public static readonly byte[] motorPositionPacket = { 0x00, 0x06, 0x00 };
 
         static readonly int MAX_ROTATION_LEEWAY = 3; //degrees of "leeway" to give to the motor. can be X degrees less than max to show as max. Accounts for minor inconsistencies in max position.
@@ -61,27 +63,26 @@ namespace NXTThrottleWPF {
         //The following are the bytes that can be sent to the nxt
         //reference sheet: http://kio4.com/b4a/programas/Appendix%202-LEGO%20MINDSTORMS%20NXT%20Direct%20commands.pdf
 
-        public void Connect() {
+        public bool Connect(string comPort = "COM3") {
 
             //thread that constantly monitors user commands in application.
             //Thread keyboardThread = new Thread(KeyboardListener);
             //keyboardThread.IsBackground = true;
 
             //connect over bluetooth
-            _serialPort = new SerialPort("COM3");
+            _serialPort = new SerialPort(comPort);
             Console.WriteLine("Serial Port Initialized");
 
             //attempt to open the serial port and start reading data.
             int errorCount = 0;
         openport: try {
                 _serialPort.Open();
-                _continue = true;
                 Console.WriteLine("Serial port opened and listener started.");
             } catch (Exception e) {
                 //catch System.UnauthorizedAccessException that arises when already connected. 
                 if (e.GetType() == typeof(System.UnauthorizedAccessException)) {
                     Console.WriteLine("Already connected or line busy, assuming already connected.");
-                    return;
+                    return true;
                 }
                 Console.WriteLine("ERROR STARTING: " + e.ToString());
                 errorCount += 1;
@@ -89,9 +90,15 @@ namespace NXTThrottleWPF {
                     goto openport; //I hate myself.
                 } else {
                     Console.WriteLine("TOO MANY ERRORS TRYING TO CONNECT, ABORTED");
-                    return;
+                    return false;
                 }
             }
+
+            //send a tone to nxt to notify user. 1khz for .5 seconds
+            byte[] tonePacket = { 0x80, 0x03, 0xE8, 0x03, 0xF4, 0x01};
+            NXTControl.SendPacket(tonePacket);
+
+            return true;
         }
 
         /*
@@ -147,14 +154,21 @@ namespace NXTThrottleWPF {
         }
 
         public double getThrottlePercent() {
-            if (SendPacket(motorPositionPacket)) {
-                byte[] packet = ReadPacket();
-                if (packet != null && packet.Length > 0) {
-                    //Console.WriteLine(BitConverter.ToString(packet));
-                    int motorPosition = BitConverter.ToInt32(packet, 23) * directionOfRotation; //mult by directionOfRotation to make the correct sign.
-                    //return Math.Max(Math.Min(100, motorPosition / maxRotation), 0);  //Constrains to be between 0 and 100
-                    return Math.Min(100, Math.Abs((double)motorPosition / maxRotation * 100));
+            try {
+                if (SendPacket(motorPositionPacket)) {
+                    byte[] packet = ReadPacket();
+                    if (packet != null && packet.Length > 0) {
+                        //Console.WriteLine(BitConverter.ToString(packet));
+                        int motorPosition = BitConverter.ToInt32(packet, 23) * directionOfRotation; //mult by directionOfRotation to make the correct sign.
+                        //return Math.Max(Math.Min(100, motorPosition / maxRotation), 0);  //Constrains to be between 0 and 100
+                        return Math.Min(100, Math.Abs((double)motorPosition / maxRotation * 100));
+                        //TODO: constrain the lower bound so moving throttle backwards doesn't move it forwards.
+                        //TODO: reverse throttle.
+                    }
                 }
+            } catch (Exception e) {
+                Console.WriteLine("ERROR GETTING THROTTLE: " + e.ToString());
+                return -1;
             }
             return -1;
         }

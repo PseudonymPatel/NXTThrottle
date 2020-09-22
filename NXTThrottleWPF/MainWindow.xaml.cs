@@ -39,6 +39,12 @@ namespace NXTThrottleWPF {
         //thread that gets and sends throttle continuously
         Thread pollThread;
 
+        //timer that keeps nxt awake constantly.
+        Timer keepAwakeTimer;
+
+        //boolean that lets the polling thread end gracefully.
+        bool continuePolling = false;
+
         /// <summary>
         /// Constructor and starting for the window
         /// </summary>
@@ -49,7 +55,11 @@ namespace NXTThrottleWPF {
             handleSource = HwndSource.FromHwnd(handle); // Get source of handle in order to add event handlers to it
             handleSource.AddHook(HandleSimConnectEvents);
 
+            //thread that handles continueously sending/polling NXT data to sim. Relies on everything set up.
             pollThread = new Thread(PollThread);
+
+            //Timer that periodically sends packet to keep the NXT awake/not go to sleep. Runs every 1 2/3 min because sleep setting least amount is 2 min.
+            keepAwakeTimer = new Timer(keepAwakeTimerFunction, null, Timeout.Infinite, Timeout.Infinite);
         }
 
         ~MainWindow() {
@@ -64,6 +74,7 @@ namespace NXTThrottleWPF {
             switch (message) {
                 case WM_USER_SIMCONNECT: {
                         if (simConnect != null) {
+                            //TODO: handle error message on sim close.
                             simConnect.ReceiveMessage();
                             isHandled = true;
                         }
@@ -106,6 +117,7 @@ namespace NXTThrottleWPF {
                 
             } else {
                 if (simConnect != null) {
+                    continuePolling = false;
                     simConnect.Dispose();
                     simConnect = null;
                 }
@@ -141,19 +153,23 @@ namespace NXTThrottleWPF {
 
         private void SendThrottle_Clicked(object sender, RoutedEventArgs e) {
             if (!pollThread.IsAlive) {
+                continuePolling = true;
                 pollThread.Start();
+                keepAwakeTimer.Change(0, 100000); //change timer to start now. (every 1 2/3 min)
                 Console.WriteLine("Polling started");
             } else {
                 Console.WriteLine("polling ended.");
-                pollThread.Abort();
+                //rather than directly abort, instead make it finish an iteration before ending.
+                continuePolling = false;
+                keepAwakeTimer.Change(Timeout.Infinite, Timeout.Infinite);
             }
         }
 
         private void PollThread() {
-            while (true) {
+            while (continuePolling) {
                 double throttleAmount = NXTcontroller.getThrottlePercent();
                 if (throttleAmount != -1) {
-                    //OutputTextBlock.Text = "Throttle is at: " + (Double)throttleAmount;
+                    Console.WriteLine("Throttle is at: " + throttleAmount);
                     StructPlaneThrottle planeThrottle = new StructPlaneThrottle() {
                         ENG1 = throttleAmount,
                         ENG2 = throttleAmount
@@ -166,7 +182,11 @@ namespace NXTThrottleWPF {
                 }
                 Thread.Sleep(100);
             }
-            Console.WriteLine("Thread ended");
+        }
+
+        private void keepAwakeTimerFunction(object state) {
+            byte[] keepAwakePacket = { 0x80, 0x0D }; //sends keep awake packet with no response requested.
+            NXTControl.SendPacket(keepAwakePacket);
         }
     }
 }
