@@ -154,7 +154,8 @@ namespace NXTThrottleWPF {
         private void SendThrottle_Clicked(object sender, RoutedEventArgs e) {
             if (!pollThread.IsAlive) {
                 continuePolling = true;
-                pollThread.Start();
+                pollThread = new Thread(PollThread);
+                pollThread.Start(); //TODO: poll thread is terminated, cannot start again
                 keepAwakeTimer.Change(0, 100000); //change timer to start now. (every 1 2/3 min)
                 Console.WriteLine("Polling started");
             } else {
@@ -166,6 +167,7 @@ namespace NXTThrottleWPF {
         }
 
         private void PollThread() {
+            double prevValue = 0;
             while (continuePolling) {
                 double throttleAmount = NXTcontroller.getThrottlePercent();
                 if (throttleAmount != -1) {
@@ -175,12 +177,15 @@ namespace NXTThrottleWPF {
                         ENG2 = throttleAmount
                     };
                     if (connectedToSim) {
-                        simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 1, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
+                        if (prevValue != throttleAmount) {
+                            simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 1, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
+                            prevValue = throttleAmount;
+                        }
                     }
                 } else {
                     //OutputTextBlock.Text = "Error getting motor position.";
                 }
-                Thread.Sleep(100);
+                Thread.Sleep(10);
             }
         }
 
