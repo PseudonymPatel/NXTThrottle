@@ -19,8 +19,10 @@ namespace NXTThrottleWPF {
             switch (setupProgress) {
                 case 0: //connect to the NXT and prep for back calibration
                 case 3: //also peform this step to recalibrate
+                    //first get com port
+                    string comPortToConnectTo = ComPortTextBox.Text;
                     //first connect over bluetooth
-                    bool connectSuccess = NXTcontroller.Connect();
+                    bool connectSuccess = NXTcontroller.Connect(comPort: comPortToConnectTo);
                     //TODO: recalibration once already connected does not work.
 
                     if (connectSuccess) {

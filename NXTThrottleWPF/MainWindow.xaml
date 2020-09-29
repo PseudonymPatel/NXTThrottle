@@ -5,12 +5,15 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:NXTThrottleWPF"
         mc:Ignorable="d"
-        Title="NXT Throttle Control" Height="450" Width="800">
-    <Grid>
-        <Button Name="ConnectButton" Click="ConnectButton_Click" Margin="10,10,551,363">Connect to Sim</Button>
-        <TextBlock Name="CalibrateButtonLabel" Margin="10,89,547,304" Text="Press button below to start NXT calibration"/>
-        <Button Name="CalibrationButton" Click="SetupButton_Clicked" Margin="10,115,547,254">Calibrate NXT</Button>
-        <Button Name="SendThrottleButton" Click="SendThrottle_Clicked" Margin="542,10,10,363">Send a Throttle Packet</Button>
-        <TextBlock Name="OutputTextBlock" Margin="542,61,10,158"></TextBlock>
-    </Grid>
+        Title="NXT Throttle Control" Height="450" Width="437.611">
+    <Canvas Margin="0,0,2,0">
+        <Button Name="ConnectButton" Click="ConnectButton_Click" Height="52" Canvas.Left="10" Canvas.Top="10" Width="228">Connect to Sim</Button>
+        <TextBlock Name="CalibrateButtonLabel" Margin="10,84,547,309" Text="Press button below to start NXT calibration"/>
+        <Button Name="CalibrationButton" Click="SetupButton_Clicked" Height="52" Canvas.Left="10" Canvas.Top="100" Width="228">Calibrate NXT</Button>
+        <TextBox Name="ComPortTextBox" Canvas.Left="112" Canvas.Top="152" Width="61">COM3</TextBox>
+
+        <Button x:Name="SendThrottleButton" Click="SendThrottle_Clicked" Content="Start/Stop Throttle Service" Height="50" Canvas.Left="10" Canvas.Top="211" Width="228"/>
+        <TextBlock Name="OutputTextBlock" Margin="10,233,542,104"></TextBlock>
+        <TextBlock x:Name="CalibrateButtonLabel_Copy" Canvas.Left="10" Canvas.Top="152" Width="102" Height="18"><Run Text="Which COM port?"/><LineBreak/><Run/></TextBlock>
+    </Canvas>
 </Window>
