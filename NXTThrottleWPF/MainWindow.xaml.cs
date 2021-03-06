@@ -1,9 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Text;
 using System.Windows;
 
 using Microsoft.FlightSimulator.SimConnect;
@@ -13,13 +8,19 @@ using System.Windows.Interop;
 
 namespace NXTThrottleWPF {
     public enum DEFINITIONS {
-        PlaneThrottle
+        PlaneThrottle,
+        PlanePitchYaw
     };
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
-    public struct StructPlaneThrottle { //only using eng1 for now for ease.
+    public struct StructPlaneThrottle {
         public double ENG1;
         public double ENG2;
+    };
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct StructPlanePitchYaw {
+        public double ELEVATOR; 
+        public double AILERON;
     };
 
     /// <summary>
@@ -61,8 +62,7 @@ namespace NXTThrottleWPF {
             //Timer that periodically sends packet to keep the NXT awake/not go to sleep. Runs every 1 2/3 min because sleep setting least amount is 2 min.
             keepAwakeTimer = new Timer(keepAwakeTimerFunction, null, Timeout.Infinite, Timeout.Infinite);
         }
-
-        ~MainWindow() {
+        ~MainWindow() { //destructor for window
             if (handleSource != null) {
                 handleSource.RemoveHook(HandleSimConnectEvents);
             }
@@ -113,6 +113,10 @@ namespace NXTThrottleWPF {
                     simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:1", "percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     simConnect.AddToDataDefinition(DEFINITIONS.PlaneThrottle, "GENERAL ENG THROTTLE LEVER POSITION:2", "percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
                     simConnect.RegisterDataDefineStruct<StructPlaneThrottle>(DEFINITIONS.PlaneThrottle);
+
+                    simConnect.AddToDataDefinition(DEFINITIONS.PlanePitchYaw, "ELEVATOR POSITION:1", "percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.AddToDataDefinition(DEFINITIONS.PlanePitchYaw, "AILERON POSITION:1", "percent", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SimConnect.SIMCONNECT_UNUSED);
+                    simConnect.RegisterDataDefineStruct<StructPlanePitchYaw>(DEFINITIONS.PlanePitchYaw);
                 }
                 
             } else {
@@ -155,7 +159,7 @@ namespace NXTThrottleWPF {
             if (!pollThread.IsAlive) {
                 continuePolling = true;
                 pollThread = new Thread(PollThread);
-                pollThread.Start(); //TODO: poll thread is terminated, cannot start again
+                pollThread.Start();
                 keepAwakeTimer.Change(0, 100000); //change timer to start now. (every 1 2/3 min)
                 Console.WriteLine("Polling started");
             } else {
@@ -167,31 +171,46 @@ namespace NXTThrottleWPF {
         }
 
         private void PollThread() {
-            double prevValue = 0;
+            double[] prevs = { 0, 0, 0 };
+            bool[] hasNew = { false, false, false };
+
             while (continuePolling) {
-                double throttleAmount = NXTcontroller.getThrottlePercent();
-                if (throttleAmount != -1) {
-                    Console.WriteLine("Throttle is at: " + throttleAmount);
+                double[] joyStickAmounts = NXTcontroller.getAxisPositions();
+                Console.WriteLine("Throttle is at: " + joyStickAmounts[0] + ", Pitch: " + joyStickAmounts[1] + ", Yaw: " + joyStickAmounts[2]);
+
+                for (int i = 0; i < 2; i++) {
+                    if (joyStickAmounts[i] != -1 && prevs[i] != joyStickAmounts[i]) {
+                        hasNew[i] = true;
+                    }
+                }
+                if (hasNew[0]) {
                     StructPlaneThrottle planeThrottle = new StructPlaneThrottle() {
-                        ENG1 = throttleAmount,
-                        ENG2 = throttleAmount
+                        ENG1 = joyStickAmounts[0],
+                        ENG2 = joyStickAmounts[0]
                     };
                     if (connectedToSim) {
-                        if (prevValue != throttleAmount) {
-                            simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 1, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
-                            prevValue = throttleAmount;
-                        }
+                        simConnect.SetDataOnSimObject(DEFINITIONS.PlaneThrottle, 1, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planeThrottle);
+                        prevs[0] = joyStickAmounts[0];
                     }
-                } else {
-                    //OutputTextBlock.Text = "Error getting motor position.";
                 }
-                Thread.Sleep(10);
+                if (hasNew[1] || hasNew[2]) {
+                    StructPlanePitchYaw planePY = new StructPlanePitchYaw {
+                        ELEVATOR = joyStickAmounts[1],
+                        AILERON = joyStickAmounts[2]
+                    };
+                    if (connectedToSim) {
+                        simConnect.SetDataOnSimObject(DEFINITIONS.PlanePitchYaw, 1, SIMCONNECT_DATA_SET_FLAG.DEFAULT, planePY);
+                        prevs[1] = joyStickAmounts[1];
+                        prevs[2] = joyStickAmounts[2];
+                    }
+                }
+                Thread.Sleep(2);
             }
         }
 
         private void keepAwakeTimerFunction(object state) {
             byte[] keepAwakePacket = { 0x80, 0x0D }; //sends keep awake packet with no response requested.
-            NXTControl.SendPacket(keepAwakePacket);
+            NXTcontroller.SendPacket(keepAwakePacket);
         }
     }
 }
